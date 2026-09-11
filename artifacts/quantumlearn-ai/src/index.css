@@ -1,0 +1,121 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --font-sans: var(--app-font-sans);
+  --font-serif: var(--app-font-serif);
+  --font-mono: var(--app-font-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: 43 43% 95%;
+  --foreground: 231 26% 18%;
+  --border: 39 27% 85%;
+  --input: 39 27% 85%;
+  --ring: 174 58% 42%;
+  --card: 43 50% 98%;
+  --card-foreground: 231 26% 18%;
+  --card-border: 39 27% 86%;
+  --popover: 43 50% 98%;
+  --popover-foreground: 231 26% 18%;
+  --primary: 174 58% 35%;
+  --primary-foreground: 43 43% 97%;
+  --secondary: 33 69% 78%;
+  --secondary-foreground: 231 26% 18%;
+  --muted: 42 30% 90%;
+  --muted-foreground: 231 12% 48%;
+  --accent: 6 72% 65%;
+  --accent-foreground: 231 26% 18%;
+  --destructive: 5 64% 52%;
+  --destructive-foreground: 43 43% 97%;
+  --app-font-sans: 'DM Sans', ui-sans-serif, sans-serif;
+  --app-font-serif: 'Fraunces', Georgia, serif;
+  --app-font-mono: 'Space Mono', ui-monospace, monospace;
+  --radius: 1rem;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--app-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+
+@keyframes ql-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ql-pulse {
+  0%, 100% { opacity: .55; transform: scale(.96); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes ql-scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.ql-rise { animation: ql-rise .55s ease both; }
+.ql-rise-2 { animation: ql-rise .55s .08s ease both; }
+.ql-rise-3 { animation: ql-rise .55s .16s ease both; }
+.ql-grid {
+  background-image: linear-gradient(hsl(174 32% 76% / .19) 1px, transparent 1px), linear-gradient(90deg, hsl(174 32% 76% / .19) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.ql-noise::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; opacity: .035; z-index: 40;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+}
+.ql-card { background: hsl(var(--card)); border: 1px solid hsl(var(--card-border)); border-radius: 1.25rem; box-shadow: 0 10px 30px hsl(231 26% 18% / .05); }
+.ql-button { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 2.75rem; padding: .65rem 1rem; border: 1px solid transparent; border-radius: .8rem; font-size: .875rem; font-weight: 700; transition: transform .18s ease, background-color .18s ease, border-color .18s ease; }
+.ql-button:hover { transform: translateY(-1px); }
+.ql-button:active { transform: translateY(0); }
+.ql-button-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); box-shadow: 0 5px 0 hsl(174 58% 25%); }
+.ql-button-primary:hover { background: hsl(174 58% 31%); }
+.ql-button-quiet { background: hsl(var(--muted)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); }
+.ql-button-quiet:hover { background: hsl(42 30% 86%); }
+.ql-button-coral { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); box-shadow: 0 5px 0 hsl(6 56% 50%); }
+.ql-input { width: 100%; border: 1px solid hsl(var(--border)); border-radius: .75rem; background: hsl(43 50% 99%); color: hsl(var(--foreground)); padding: .75rem .9rem; outline: none; }
+.ql-input:focus { border-color: hsl(var(--primary)); box-shadow: 0 0 0 3px hsl(var(--primary) / .14); }
+.ql-label { display: block; margin-bottom: .45rem; font-size: .73rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+.ql-kicker { color: hsl(var(--primary)); font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.ql-serif { font-family: var(--app-font-serif); }
+.ql-mono { font-family: var(--app-font-mono); }
+.ql-progress { height: .45rem; overflow: hidden; border-radius: 99px; background: hsl(var(--muted)); }
+.ql-progress > span { display: block; height: 100%; border-radius: inherit; background: hsl(var(--primary)); transition: width .35s ease; }
+@media (max-width: 767px) {
+  .ql-mobile-scroll { overflow-x: auto; scrollbar-width: none; }
+  .ql-mobile-scroll::-webkit-scrollbar { display: none; }
+}
