@@ -16,7 +16,9 @@ import {
   GitCompare,
   Gauge,
   GraduationCap,
+  Layers,
   Lightbulb,
+  Medal,
   LogOut,
   Menu,
   MessageCircle,
@@ -24,6 +26,7 @@ import {
   RotateCcw,
   Send,
   Settings,
+  ScrollText,
   Sparkles,
   Target,
   Trophy,
@@ -39,11 +42,12 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/toaster';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
+import { challengeCatalog, classroomLessons, curriculum, labCatalog } from './curriculum';
 
 type GateName = 'H' | 'X' | 'Y' | 'Z' | 'S' | 'T' | 'CZ' | 'DIFF';
 type Gate = { id: number; name: GateName; qubit: number };
 type LearningLevel = '' | 'beginner' | 'basic' | 'intermediate' | 'advanced';
-type Learner = { name: string; email: string; learningLevel: LearningLevel; joinedAt: string; completed: string[]; streak: number; runs: number; quizScore: number; predictionAttempts: number; predictionCorrect: number };
+type Learner = { name: string; email: string; learningLevel: LearningLevel; joinedAt: string; completed: string[]; challengesCompleted: string[]; streak: number; runs: number; quizScore: number; predictionAttempts: number; predictionCorrect: number };
 type Complex = { re: number; im: number };
 
 const queryClient = new QueryClient();
@@ -105,16 +109,20 @@ const clerkAppearance = {
 function stripBase(path: string) {
   return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
 }
-const initialLearner: Learner = { name: '', email: '', learningLevel: '', joinedAt: '', completed: [], streak: 1, runs: 0, quizScore: 0, predictionAttempts: 0, predictionCorrect: 0 };
+const initialLearner: Learner = { name: '', email: '', learningLevel: '', joinedAt: '', completed: [], challengesCompleted: [], streak: 1, runs: 0, quizScore: 0, predictionAttempts: 0, predictionCorrect: 0 };
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: Gauge },
+  { href: '/classroom', label: 'Classroom', icon: Layers },
   { href: '/learn', label: 'Learn', icon: BookOpen },
   { href: '/algorithms', label: 'Algorithms', icon: BrainCircuit },
   { href: '/quantum-lab', label: 'Quantum lab', icon: FlaskConical },
   { href: '/qubit-explorer', label: 'Qubit explorer', icon: CircleDot },
   { href: '/quiz', label: 'Practice', icon: CircleHelp },
+  { href: '/challenges', label: 'Challenges', icon: Target },
   { href: '/progress', label: 'Progress', icon: BarChart3 },
+  { href: '/achievements', label: 'Achievements', icon: Medal },
   { href: '/ai-tutor', label: 'AI tutor', icon: MessageCircle },
+  { href: '/documentation', label: 'Documentation', icon: ScrollText },
 ];
 const topics = [
   { id: 'what-is-quantum', title: 'What is quantum computing?', tag: 'Start here', time: '6 min', copy: 'A friendly map of qubits, states, and why this field is different.' },
@@ -171,6 +179,46 @@ function simulate(gates: Gate[]) {
   const probabilities = state.map(magnitude2);
   const total = probabilities.reduce((sum, value) => sum + value, 0) || 1;
   return { state, probabilities: probabilities.map((value) => value / total) };
+}
+
+type QuantumCircuitPayload = {
+  numQubits: number;
+  gates: Array<{ type: string; qubit?: number; control?: number; target?: number; angle?: number }>;
+  measure: boolean;
+  shots: number;
+};
+
+type QuantumSimulationResult = {
+  ok: boolean;
+  probabilities: Record<string, number>;
+  counts: Record<string, number>;
+  shots: number;
+  statevector: Array<{ basis: string; re: number; im: number }>;
+  code: string;
+  circuit: string;
+  executionMs: number;
+  errors: string[];
+};
+
+async function runQuantumSimulation(circuit: QuantumCircuitPayload): Promise<QuantumSimulationResult> {
+  const response = await fetch('/api/simulate', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(circuit),
+  });
+  const data = await response.json() as QuantumSimulationResult & { error?: string };
+  if (!response.ok || !data.ok) throw new Error(data.error || data.errors?.join(' ') || 'The quantum execution service could not run this circuit.');
+  return data;
+}
+
+function countsToProbabilities(counts: Record<string, number>, shots: number) {
+  return Object.entries(counts).map(([basis, count]) => ({ basis, probability: shots ? count / shots : 0 })).sort((a, b) => b.probability - a.probability);
+}
+
+function CountsChart({ counts, shots }: { counts: Record<string, number>; shots: number }) {
+  const rows = countsToProbabilities(counts, shots);
+  return <div className="space-y-3" data-testid="chart-counts">{rows.length ? rows.map(({ basis, probability }) => <div key={basis} className="grid grid-cols-[56px_1fr_66px] items-center gap-3 text-xs"><span className="ql-mono text-[hsl(var(--muted-foreground))]">|{basis}⟩</span><div className="h-3 overflow-hidden rounded-full bg-[hsl(var(--muted))]"><div className="h-full rounded-full bg-[hsl(var(--accent))]" style={{ width: `${Math.max(1, probability * 100)}%` }} /></div><span className="ql-mono text-right font-bold">{Math.round(probability * 100)}% · {Math.round(probability * shots)}</span></div>) : <p className="text-sm text-[hsl(var(--muted-foreground))]">No measured counts yet.</p>}</div>;
 }
 
 function useLearner(userId: string | null | undefined, user: { fullName: string | null; primaryEmailAddress: { emailAddress: string } | null } | null | undefined) {
