@@ -10,36 +10,102 @@ import {
   ChevronRight,
   CircleHelp,
   CircleDot,
+  ChevronDown,
   Eye,
   FlaskConical,
   GitCompare,
   Gauge,
   GraduationCap,
   Lightbulb,
+  LogOut,
   Menu,
   MessageCircle,
   Play,
   RotateCcw,
   Send,
+  Settings,
   Sparkles,
   Target,
   Trophy,
+  UserRound,
   X,
   Zap,
 } from 'lucide-react';
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { shadcn } from '@clerk/themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/toaster';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 
 type GateName = 'H' | 'X' | 'Y' | 'Z' | 'S' | 'T' | 'CZ' | 'DIFF';
 type Gate = { id: number; name: GateName; qubit: number };
-type Learner = { name: string; completed: string[]; streak: number; runs: number; quizScore: number; predictionAttempts: number; predictionCorrect: number };
+type LearningLevel = '' | 'beginner' | 'basic' | 'intermediate' | 'advanced';
+type Learner = { name: string; email: string; learningLevel: LearningLevel; joinedAt: string; completed: string[]; streak: number; runs: number; quizScore: number; predictionAttempts: number; predictionCorrect: number };
 type Complex = { re: number; im: number };
 
 const queryClient = new QueryClient();
-const initialLearner: Learner = { name: '', completed: [], streak: 1, runs: 0, quizScore: 0, predictionAttempts: 0, predictionCorrect: 0 };
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the environment.');
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: 'clerk',
+  options: {
+    logoPlacement: 'inside' as const,
+    logoLinkUrl: basePath || '/',
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: 'hsl(174 58% 35%)',
+    colorForeground: 'hsl(231 26% 18%)',
+    colorMutedForeground: 'hsl(231 12% 48%)',
+    colorDanger: 'hsl(6 72% 55%)',
+    colorBackground: 'hsl(43 50% 98%)',
+    colorInput: 'hsl(43 43% 95%)',
+    colorInputForeground: 'hsl(231 26% 18%)',
+    colorNeutral: 'hsl(39 27% 85%)',
+    fontFamily: 'DM Sans, ui-sans-serif, sans-serif',
+    borderRadius: '1rem',
+  },
+  elements: {
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-[hsl(43_50%_98%)] rounded-2xl w-[440px] max-w-full overflow-hidden',
+    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    headerTitle: 'text-[hsl(231_26%_18%)] font-black',
+    headerSubtitle: 'text-[hsl(231_12%_48%)]',
+    socialButtonsBlockButtonText: 'text-[hsl(231_26%_18%)] font-bold',
+    formFieldLabel: 'text-[hsl(231_26%_18%)] font-bold',
+    footerActionLink: 'text-[hsl(174_58%_35%)] font-bold',
+    footerActionText: 'text-[hsl(231_12%_48%)]',
+    dividerText: 'text-[hsl(231_12%_48%)]',
+    identityPreviewEditButton: 'text-[hsl(174_58%_35%)]',
+    formFieldSuccessText: 'text-[hsl(174_58%_35%)]',
+    alertText: 'text-[hsl(231_26%_18%)]',
+    logoBox: 'rounded-xl',
+    logoImage: 'rounded-xl',
+    socialButtonsBlockButton: 'border-[hsl(39_27%_85%)] bg-[hsl(43_43%_95%)] hover:bg-[hsl(42_30%_90%)]',
+    formButtonPrimary: 'bg-[hsl(174_58%_35%)] hover:bg-[hsl(174_58%_29%)] text-[hsl(43_43%_97%)] font-black',
+    formFieldInput: 'border-[hsl(39_27%_85%)] bg-[hsl(43_43%_95%)] text-[hsl(231_26%_18%)]',
+    footerAction: 'border-t border-[hsl(39_27%_85%)]',
+    dividerLine: 'bg-[hsl(39_27%_85%)]',
+    alert: 'border-[hsl(6_72%_65%/.4)] bg-[hsl(6_72%_65%/.08)]',
+    otpCodeFieldInput: 'border-[hsl(39_27%_85%)]',
+    formFieldRow: 'gap-2',
+    main: 'gap-5',
+  },
+};
+function stripBase(path: string) {
+  return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
+}
+const initialLearner: Learner = { name: '', email: '', learningLevel: '', joinedAt: '', completed: [], streak: 1, runs: 0, quizScore: 0, predictionAttempts: 0, predictionCorrect: 0 };
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: Gauge },
   { href: '/learn', label: 'Learn', icon: BookOpen },
@@ -107,12 +173,30 @@ function simulate(gates: Gate[]) {
   return { state, probabilities: probabilities.map((value) => value / total) };
 }
 
-function useLearner() {
-  const [learner, setLearner] = useState<Learner>(() => {
-    try { return { ...initialLearner, ...(JSON.parse(localStorage.getItem('ql-learner') || 'null') || {}) }; } catch { return initialLearner; }
-  });
-  useEffect(() => { localStorage.setItem('ql-learner', JSON.stringify(learner)); }, [learner]);
-  return [learner, setLearner] as const;
+function useLearner(userId: string | null | undefined, user: { fullName: string | null; primaryEmailAddress: { emailAddress: string } | null } | null | undefined) {
+  const storageKey = userId ? `ql-learner:${userId}` : 'ql-guest';
+  const [learner, setLearner] = useState<Learner>(initialLearner);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(storageKey) || 'null') as Partial<Learner> | null;
+      const next = { ...initialLearner, ...(stored || {}) };
+      if (user) {
+        next.name = next.name || user.fullName || '';
+        next.email = user.primaryEmailAddress?.emailAddress || next.email;
+        next.joinedAt = next.joinedAt || new Date().toISOString();
+      }
+      setLearner(next);
+    } catch {
+      setLearner({ ...initialLearner, name: user?.fullName || '', email: user?.primaryEmailAddress?.emailAddress || '', joinedAt: user ? new Date().toISOString() : '' });
+    } finally {
+      setReady(true);
+    }
+  }, [storageKey, user]);
+  useEffect(() => {
+    if (ready && userId) localStorage.setItem(storageKey, JSON.stringify(learner));
+  }, [learner, ready, storageKey, userId]);
+  return [learner, setLearner, ready] as const;
 }
 
 function Logo({ compact = false }: { compact?: boolean }) {
@@ -123,6 +207,30 @@ function Logo({ compact = false }: { compact?: boolean }) {
     </span>
     {!compact && <span className="text-[1.05rem] font-black tracking-[-.04em]">quantum<span className="text-[hsl(var(--primary))]">learn</span></span>}
   </Link>;
+}
+
+function ProfileMenu({ learner }: { learner: Learner }) {
+  const { signOut } = useClerk();
+  const { user } = useUser();
+  const [open, setOpen] = useState(false);
+  const displayName = user?.fullName || learner.name || 'Learner';
+  return <div className="relative">
+    <button onClick={() => setOpen((value) => !value)} className="flex items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1.5 pr-2 text-left hover:border-[hsl(var(--primary)/.5)]" aria-expanded={open} aria-label="Open profile menu" data-testid="button-profile-menu">
+      <span className="flex size-8 items-center justify-center rounded-full bg-[hsl(var(--secondary))] text-xs font-black">{displayName.slice(0, 1).toUpperCase()}</span>
+      <span className="hidden max-w-28 truncate text-xs font-bold sm:block">{displayName}</span>
+      <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+    </button>
+    {open && <div className="absolute right-0 top-12 z-40 w-52 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2 shadow-[0_16px_40px_hsl(231_26%_18%/.15)]">
+      <div className="border-b border-[hsl(var(--border))] px-3 pb-3 pt-2"><p className="truncate text-sm font-black">{displayName}</p><p className="mt-1 truncate text-[10px] text-[hsl(var(--muted-foreground))]">{user?.primaryEmailAddress?.emailAddress || learner.email}</p></div>
+      <div className="py-1">
+        <Link href="/profile" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold hover:bg-[hsl(var(--muted))]" data-testid="link-profile-menu"><UserRound size={14} /> Profile</Link>
+        <Link href="/progress" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold hover:bg-[hsl(var(--muted))]" data-testid="link-progress-menu"><BarChart3 size={14} /> My progress</Link>
+        <Link href="/settings" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold hover:bg-[hsl(var(--muted))]" data-testid="link-settings-menu"><Settings size={14} /> Settings</Link>
+        <Link href="/ai-tutor" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold hover:bg-[hsl(var(--muted))]" data-testid="link-tutor-menu"><MessageCircle size={14} /> AI tutor</Link>
+      </div>
+      <button onClick={() => signOut({ redirectUrl: basePath || '/' })} className="flex w-full items-center gap-2 border-t border-[hsl(var(--border))] px-3 py-3 text-xs font-bold text-[hsl(var(--accent))] hover:bg-[hsl(var(--accent)/.08)]" data-testid="button-logout"><LogOut size={14} /> Log out</button>
+    </div>}
+  </div>;
 }
 
 function Shell({ children, learner }: { children: ReactNode; learner: Learner }) {
@@ -153,28 +261,66 @@ function Shell({ children, learner }: { children: ReactNode; learner: Learner })
       <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between border-b border-[hsl(var(--border)/.7)] bg-[hsl(var(--background)/.88)] px-5 backdrop-blur-md md:px-9">
         <button onClick={() => setOpen(true)} className="rounded-lg p-2 md:hidden" aria-label="Open menu" data-testid="button-open-menu"><Menu size={21} /></button>
         <div className="hidden md:block"><p className="text-sm font-semibold text-[hsl(var(--muted-foreground))]">{location === '/dashboard' ? 'Tuesday, your lab is ready' : 'QuantumLearn AI'}</p></div>
-        <div className="ml-auto flex items-center gap-3"><Link href="/ai-tutor" className="hidden items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2 text-xs font-bold text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary))] sm:flex" data-testid="link-header-tutor"><MessageCircle size={15} /> Ask the tutor</Link><div className="flex size-9 items-center justify-center rounded-full bg-[hsl(var(--secondary))] text-sm font-black text-[hsl(var(--foreground))]" data-testid="text-avatar">{learner.name ? learner.name.slice(0, 1).toUpperCase() : 'Q'}</div></div>
+        <div className="ml-auto flex items-center gap-3"><Link href="/ai-tutor" className="hidden items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2 text-xs font-bold text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary))] sm:flex" data-testid="link-header-tutor"><MessageCircle size={15} /> Ask the tutor</Link><ProfileMenu learner={learner} /></div>
       </header>
       <main className="mx-auto max-w-[1380px] px-5 py-8 md:px-9 md:py-10">{children}</main>
     </div>
   </div>;
 }
 
-function Landing({ learner, setLearner }: { learner: Learner; setLearner: (value: Learner) => void }) {
-  const [, setLocation] = useLocation();
-  const [name, setName] = useState(learner.name);
-  const submit = () => { const next = name.trim() || 'Curious learner'; setLearner({ ...learner, name: next }); setLocation('/dashboard'); };
+function Landing() {
   return <div className="ql-noise min-h-[100dvh] overflow-hidden bg-[hsl(var(--background))]">
-    <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 md:px-10"><Logo /><span className="hidden text-xs font-bold text-[hsl(var(--muted-foreground))] sm:block">A calmer way into quantum</span></header>
+    <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 md:px-10"><Logo /><div className="flex items-center gap-2"><Link href="/sign-in" className="ql-button ql-button-quiet" data-testid="link-landing-sign-in">Sign in</Link><Link href="/sign-up" className="ql-button ql-button-primary" data-testid="link-landing-sign-up">Create account <ArrowRight size={15} /></Link></div></header>
     <section className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 pb-16 pt-10 md:grid-cols-[1.02fr_.98fr] md:px-10 md:pb-24 md:pt-20">
       <div className="relative z-10 ql-rise"><p className="ql-kicker mb-5 flex items-center gap-2"><span className="size-2 rounded-full bg-[hsl(var(--accent))]" />A personal quantum laboratory</p><h1 className="ql-serif max-w-2xl text-[3.7rem] leading-[.95] tracking-[-.055em] md:text-[6.6rem]">Make the<br /><em className="text-[hsl(var(--primary))]">invisible</em><br />click.</h1><p className="mt-7 max-w-md text-base leading-7 text-[hsl(var(--muted-foreground))]">QuantumLearn turns quantum computing from a wall of symbols into a place you can explore. Learn a concept, build the circuit, and see what the math does.</p>
-        <div className="mt-8 max-w-md rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card)/.75)] p-3 shadow-[0_12px_34px_hsl(231_26%_18%_/.06)]"><label className="ql-label px-2 pt-1">What should we call you?</label><div className="flex gap-2"><input value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && submit()} className="ql-input border-0 bg-transparent shadow-none" placeholder="Your first name" data-testid="input-learner-name" /><button onClick={submit} className="ql-button ql-button-primary shrink-0 px-4" data-testid="button-start-learning">Start exploring <ArrowRight size={16} /></button></div></div>
+         <div className="mt-8 max-w-md rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card)/.75)] p-4 shadow-[0_12px_34px_hsl(231_26%_18%_/.06)]"><p className="ql-label">Your personal learning path</p><p className="mt-2 text-sm leading-6 text-[hsl(var(--muted-foreground))]">Create an account to keep lessons, experiments, predictions, and progress connected to you.</p><div className="mt-4 flex flex-wrap gap-2"><Link href="/sign-up" className="ql-button ql-button-primary" data-testid="button-start-learning">Start exploring <ArrowRight size={16} /></Link><Link href="/sign-in" className="ql-button ql-button-quiet" data-testid="link-landing-existing-user">I already have an account</Link></div></div>
       </div>
       <div className="relative ql-rise-2 md:pl-5"><div className="ql-grid absolute -inset-10 rounded-[3rem] opacity-70" /><div className="relative mx-auto max-w-[510px] rotate-[2deg] rounded-[2rem] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-[14px_18px_0_hsl(33_69%_78%/.6)]"><div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-2 pb-4"><div className="flex items-center gap-2"><span className="size-2 rounded-full bg-[hsl(var(--accent))]" /><span className="ql-mono text-[10px] text-[hsl(var(--muted-foreground))]">LOCAL SIMULATOR / READY</span></div><span className="rounded-full bg-[hsl(174_58%_35%/.1)] px-2 py-1 text-[10px] font-bold text-[hsl(var(--primary))]">3 QUBITS</span></div><div className="ql-mono mt-8 space-y-7 text-xs"><div className="grid grid-cols-[38px_1fr] items-center gap-3"><span className="font-bold text-[hsl(var(--muted-foreground))]">q₂</span><div className="relative h-px bg-[hsl(var(--border))]"><span className="absolute left-[64%] top-1/2 flex size-9 -translate-y-1/2 -translate-x-1/2 items-center justify-center rounded-lg border-2 border-[hsl(var(--primary))] bg-[hsl(var(--card))] text-[hsl(var(--primary))]">H</span></div></div><div className="grid grid-cols-[38px_1fr] items-center gap-3"><span className="font-bold text-[hsl(var(--muted-foreground))]">q₁</span><div className="relative h-px bg-[hsl(var(--border))]"><span className="absolute left-[39%] top-1/2 flex size-9 -translate-y-1/2 -translate-x-1/2 items-center justify-center rounded-lg border-2 border-[hsl(var(--accent))] bg-[hsl(var(--card))] text-[hsl(var(--accent))]">X</span><span className="absolute left-[72%] top-1/2 flex size-9 -translate-y-1/2 -translate-x-1/2 items-center justify-center rounded-lg border-2 border-[hsl(var(--primary))] bg-[hsl(var(--card))] text-[hsl(var(--primary))]">H</span></div></div><div className="grid grid-cols-[38px_1fr] items-center gap-3"><span className="font-bold text-[hsl(var(--muted-foreground))]">q₀</span><div className="relative h-px bg-[hsl(var(--border))]"><span className="absolute left-[22%] top-1/2 flex size-9 -translate-y-1/2 -translate-x-1/2 items-center justify-center rounded-lg border-2 border-[hsl(var(--primary))] bg-[hsl(var(--card))] text-[hsl(var(--primary))]">H</span><span className="absolute left-[72%] top-1/2 flex size-9 -translate-y-1/2 -translate-x-1/2 items-center justify-center rounded-lg border-2 border-[hsl(var(--primary))] bg-[hsl(var(--card))] text-[hsl(var(--primary))]">H</span></div></div></div><div className="mt-9 grid grid-cols-3 gap-2 border-t border-[hsl(var(--border))] pt-4 text-center"><div><p className="ql-mono text-lg font-bold text-[hsl(var(--primary))]">.50</p><p className="text-[10px] text-[hsl(var(--muted-foreground))]">|000⟩</p></div><div><p className="ql-mono text-lg font-bold text-[hsl(var(--accent))]">.25</p><p className="text-[10px] text-[hsl(var(--muted-foreground))]">|011⟩</p></div><div><p className="ql-mono text-lg font-bold text-[hsl(var(--primary))]">.25</p><p className="text-[10px] text-[hsl(var(--muted-foreground))]">|101⟩</p></div></div></div><div className="absolute -bottom-5 -left-3 rounded-2xl bg-[hsl(var(--foreground))] px-4 py-3 text-[hsl(var(--primary-foreground))] shadow-xl"><p className="ql-mono text-[10px] text-[hsl(var(--secondary))]">TODAY'S LOOP</p><p className="mt-1 text-sm font-bold">Learn → build → understand</p></div></div>
     </section>
     <section className="border-y border-[hsl(var(--border))] bg-[hsl(33_69%_78%/.22)]"><div className="mx-auto grid max-w-7xl gap-0 md:grid-cols-4">{[['01', 'Learn', 'Short lessons, no gatekeeping.'], ['02', 'Visualize', 'Watch probability take shape.'], ['03', 'Build', 'Place gates with your own hands.'], ['04', 'Adapt', 'Ask why, then try again.']].map(([number, title, copy]) => <div key={number} className="border-b border-[hsl(var(--border))] p-6 md:border-b-0 md:border-r md:p-8 last:border-0"><span className="ql-mono text-xs text-[hsl(var(--accent))]">{number}</span><h2 className="mt-5 text-xl font-black">{title}</h2><p className="mt-2 text-sm leading-6 text-[hsl(var(--muted-foreground))]">{copy}</p></div>)}</div></section>
-    <footer className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-8 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row sm:items-center sm:justify-between md:px-10"><span>Built for curious minds who ask “but why?”</span><span className="ql-mono">NO CLOUD / NO SCOREKEEPING</span></footer>
+     <footer className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-8 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row sm:items-center sm:justify-between md:px-10"><span>Built for curious minds who ask “but why?”</span><span className="ql-mono">YOUR PROGRESS, YOUR LAB NOTEBOOK</span></footer>
   </div>;
+}
+
+function AuthLoading() {
+  return <div className="ql-noise flex min-h-[100dvh] items-center justify-center bg-[hsl(var(--background))] p-6"><div className="ql-card w-full max-w-sm p-8 text-center"><div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"><Atom size={24} className="animate-pulse" /></div><p className="ql-kicker mt-5">QuantumLearn</p><h1 className="ql-serif mt-2 text-3xl">Preparing your lab…</h1><p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">Checking your secure session.</p></div></div>;
+}
+
+function SignInPage() {
+  const redirect = new URLSearchParams(window.location.search).get('redirect_url');
+  return <div className="ql-noise flex min-h-[100dvh] items-center justify-center bg-[hsl(var(--background))] p-4 md:p-8"><div className="w-full max-w-[520px]"><div className="mb-5 flex items-center justify-between"><Logo /><Link href="/" className="text-xs font-bold text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))]" data-testid="link-auth-home">Back to overview</Link></div><div className="ql-card overflow-hidden p-3 md:p-5"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={redirect || `${basePath}/`} /></div></div></div>;
+}
+
+function SignUpPage() {
+  return <div className="ql-noise flex min-h-[100dvh] items-center justify-center bg-[hsl(var(--background))] p-4 md:p-8"><div className="w-full max-w-[520px]"><div className="mb-5 flex items-center justify-between"><Logo /><Link href="/" className="text-xs font-bold text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))]" data-testid="link-auth-home">Back to overview</Link></div><div className="ql-card overflow-hidden p-3 md:p-5"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/onboarding`} /></div></div></div>;
+}
+
+function Onboarding({ learner, setLearner }: { learner: Learner; setLearner: (value: Learner) => void }) {
+  const [, setLocation] = useLocation();
+  const [level, setLevel] = useState<Exclude<LearningLevel, ''>>((learner.learningLevel || 'beginner') as Exclude<LearningLevel, ''>);
+  const options: { id: Exclude<LearningLevel, ''>; icon: string; title: string; copy: string }[] = [
+    { id: 'beginner', icon: '01', title: 'Complete beginner', copy: "I don't know anything yet." },
+    { id: 'basic', icon: '02', title: 'Basic knowledge', copy: 'I know what qubits and gates are.' },
+    { id: 'intermediate', icon: '03', title: 'Intermediate', copy: 'I can build basic quantum circuits.' },
+    { id: 'advanced', icon: '04', title: 'Advanced', copy: 'I already understand quantum algorithms.' },
+  ];
+  const finish = () => { setLearner({ ...learner, learningLevel: level }); setLocation('/dashboard'); };
+  return <div className="ql-noise min-h-[100dvh] bg-[hsl(var(--background))] p-5 md:p-10"><div className="mx-auto max-w-3xl"><div className="flex items-center justify-between"><Logo /><span className="ql-kicker">First lab setup</span></div><div className="mt-16 max-w-2xl"><p className="ql-kicker">Welcome to QuantumLearn</p><h1 className="ql-serif mt-3 text-5xl leading-[.98] tracking-[-.05em] md:text-7xl">Let’s find your starting point.</h1><p className="mt-6 max-w-xl text-base leading-7 text-[hsl(var(--muted-foreground))]">This helps us recommend the right first experiment. You can explore every topic at any time.</p></div><div className="mt-10 grid gap-3 sm:grid-cols-2">{options.map((option) => <button key={option.id} onClick={() => setLevel(option.id)} className={`ql-card p-5 text-left transition-transform hover:-translate-y-1 ${level === option.id ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/.08)] shadow-[0_0_0_2px_hsl(var(--primary)/.18)]' : ''}`} data-testid={`button-onboarding-${option.id}`}><div className="flex items-start justify-between"><span className="ql-mono text-xs text-[hsl(var(--accent))]">{option.icon}</span><span className={`size-4 rounded-full border-2 ${level === option.id ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary))]' : 'border-[hsl(var(--border))]'}`} /></div><h2 className="mt-8 text-lg font-black">{option.title}</h2><p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{option.copy}</p></button>)}</div><div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-[hsl(var(--muted-foreground))]">Your level personalizes recommendations; it never locks content.</p><button onClick={finish} className="ql-button ql-button-primary" data-testid="button-finish-onboarding">Open my learning path <ArrowRight size={16} /></button></div></div></div>;
+}
+
+function ProfilePage({ learner, setLearner }: { learner: Learner; setLearner: (value: Learner) => void }) {
+  const { user } = useUser();
+  const [name, setName] = useState(learner.name || user?.fullName || '');
+  const [saved, setSaved] = useState(false);
+  const save = async () => {
+    const nextName = name.trim() || learner.name || 'Learner';
+    if (user && nextName !== user.fullName) await user.update({ firstName: nextName, lastName: '' });
+    setLearner({ ...learner, name: nextName });
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2200);
+  };
+  const levelLabel = learner.learningLevel ? learner.learningLevel[0].toUpperCase() + learner.learningLevel.slice(1) : 'Not selected';
+  return <div className="ql-rise mx-auto max-w-4xl"><PageTitle kicker="Your account" title="A profile for the work you’re doing." copy="Your identity and learning signals stay connected to your secure account." /><div className="grid gap-5 lg:grid-cols-[.78fr_1.22fr]"><section className="ql-card p-6 md:p-8"><div className="flex size-16 items-center justify-center rounded-2xl bg-[hsl(var(--primary))] text-2xl font-black text-[hsl(var(--primary-foreground))]">{(user?.fullName || learner.name || 'L').slice(0, 1).toUpperCase()}</div><p className="ql-kicker mt-6">Student account</p><h2 className="mt-2 text-2xl font-black">{user?.fullName || learner.name || 'Learner'}</h2><p className="mt-2 break-all text-sm text-[hsl(var(--muted-foreground))]">{user?.primaryEmailAddress?.emailAddress || learner.email}</p><div className="mt-8 rounded-xl bg-[hsl(var(--muted))] p-4"><p className="ql-kicker">Joined</p><p className="mt-2 text-sm font-bold">{learner.joinedAt ? new Date(learner.joinedAt).toLocaleDateString() : 'Recently'}</p></div></section><section className="ql-card p-6 md:p-8"><p className="ql-kicker">Personal details</p><div className="mt-5"><label className="ql-label" htmlFor="profile-name">Full name</label><input id="profile-name" className="ql-input mt-2" value={name} onChange={(event) => setName(event.target.value)} data-testid="input-profile-name" /></div><div className="mt-5 rounded-xl border border-[hsl(var(--border))] p-4"><p className="ql-kicker">Learning level</p><div className="mt-2 flex items-center justify-between gap-3"><p className="text-lg font-black">{levelLabel}</p><Link href="/onboarding" className="text-xs font-black text-[hsl(var(--primary))]" data-testid="link-change-learning-level">Change level</Link></div></div><div className="mt-5 grid grid-cols-3 gap-3"><div><p className="ql-mono text-2xl font-bold">{learner.completed.length}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">lessons</p></div><div><p className="ql-mono text-2xl font-bold">{learner.runs}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">runs</p></div><div><p className="ql-mono text-2xl font-bold">{learner.quizScore || '—'}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">quiz score</p></div></div><button onClick={save} className="ql-button ql-button-primary mt-7" data-testid="button-save-profile">{saved ? <Check size={16} /> : <UserRound size={16} />}{saved ? 'Saved' : 'Save profile'}</button></section></div></div>;
 }
 
 function PageTitle({ kicker, title, copy, action }: { kicker: string; title: string; copy: string; action?: ReactNode }) {
@@ -370,14 +516,51 @@ function NotFoundPage() {
 
 function Router({ learner, setLearner }: { learner: Learner; setLearner: (value: Learner) => void }) {
   const [location] = useLocation();
-  const isLanding = location === '/';
-  if (isLanding) return <Landing learner={learner} setLearner={setLearner} />;
-  return <Shell learner={learner}><ErrorBoundary resetKey={location}><Switch><Route path="/dashboard"><Dashboard learner={learner} setLearner={setLearner} /></Route><Route path="/learn"><Learn learner={learner} /></Route><Route path="/learn/:topic"><LearnDetail learner={learner} setLearner={setLearner} /></Route><Route path="/algorithms"><Algorithms /></Route><Route path="/algorithms/:algorithm"><AlgorithmDetail /></Route><Route path="/quantum-lab"><QuantumLab learner={learner} setLearner={setLearner} /></Route><Route path="/qubit-explorer"><QubitExplorer learner={learner} setLearner={setLearner} /></Route><Route path="/quiz"><Quiz learner={learner} setLearner={setLearner} /></Route><Route path="/progress"><Progress learner={learner} /></Route><Route path="/ai-tutor"><AiTutor /></Route><Route component={NotFoundPage} /></Switch></ErrorBoundary></Shell>;
+  return <Shell learner={learner}><ErrorBoundary resetKey={location}><Switch><Route path="/dashboard"><Dashboard learner={learner} setLearner={setLearner} /></Route><Route path="/onboarding"><Onboarding learner={learner} setLearner={setLearner} /></Route><Route path="/learn"><Learn learner={learner} /></Route><Route path="/learn/:topic"><LearnDetail learner={learner} setLearner={setLearner} /></Route><Route path="/algorithms"><Algorithms /></Route><Route path="/algorithms/:algorithm"><AlgorithmDetail /></Route><Route path="/quantum-lab"><QuantumLab learner={learner} setLearner={setLearner} /></Route><Route path="/qubit-explorer"><QubitExplorer learner={learner} setLearner={setLearner} /></Route><Route path="/quiz"><Quiz learner={learner} setLearner={setLearner} /></Route><Route path="/progress"><Progress learner={learner} /></Route><Route path="/ai-tutor"><AiTutor /></Route><Route path="/profile"><ProfilePage learner={learner} setLearner={setLearner} /></Route><Route path="/settings"><ProfilePage learner={learner} setLearner={setLearner} /></Route><Route component={NotFoundPage} /></Switch></ErrorBoundary></Shell>;
+}
+
+function ProtectedRouter() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const [location] = useLocation();
+  const [learner, setLearner, ready] = useLearner(user?.id, user);
+  if (!isLoaded) return <AuthLoading />;
+  if (!isSignedIn) return location === '/' ? <Landing /> : <Redirect to={`/sign-in?redirect_url=${encodeURIComponent(location)}`} />;
+  if (!ready) return <AuthLoading />;
+  if (location === '/') return <Redirect to={learner.learningLevel ? '/dashboard' : '/onboarding'} />;
+  return <Router learner={learner} setLearner={setLearner} />;
+}
+
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+  return <ClerkProvider
+    publishableKey={clerkPubKey}
+    proxyUrl={clerkProxyUrl}
+    appearance={clerkAppearance}
+    signInUrl={`${basePath}/sign-in`}
+    signUpUrl={`${basePath}/sign-up`}
+    localization={{
+      signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to return to your quantum lab.' } },
+      signUp: { start: { title: 'Create your QuantumLearn account', subtitle: 'Keep your experiments and progress together.' } },
+    }}
+    routerPush={(to) => setLocation(stripBase(to))}
+    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+  >
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Switch>
+          <Route path="/sign-in/*?" component={SignInPage} />
+          <Route path="/sign-up/*?" component={SignUpPage} />
+          <Route component={ProtectedRouter} />
+        </Switch>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ClerkProvider>;
 }
 
 function App() {
-  const [learner, setLearner] = useLearner();
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router learner={learner} setLearner={setLearner} /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <WouterRouter base={basePath}><ClerkProviderWithRoutes /></WouterRouter>;
 }
 
 export default App;
