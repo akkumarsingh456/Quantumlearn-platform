@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type RequestHandler } from "express";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import cors from "cors";
 import pinoHttpModule from "pino-http";
@@ -13,9 +13,16 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 
 const app: Express = express();
-const pinoHttp =
-  (pinoHttpModule as unknown as { default?: typeof pinoHttpModule }).default ??
-  pinoHttpModule;
+type PinoHttpFactory = (options: unknown) => RequestHandler;
+const pinoHttpInterop = pinoHttpModule as unknown as
+  | PinoHttpFactory
+  | { default?: PinoHttpFactory };
+const pinoHttp: PinoHttpFactory =
+  typeof pinoHttpInterop === "function"
+    ? pinoHttpInterop
+    : pinoHttpInterop.default ?? (() => {
+        throw new Error("pino-http factory export is unavailable");
+      });
 
 app.use(
   pinoHttp({
