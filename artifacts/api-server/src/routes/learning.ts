@@ -1,10 +1,12 @@
-import { Router, type IRouter } from 'express';
+import { Router, type IRouter, type Request } from 'express';
 import { experimentSchema, quizAttemptSchema } from '@workspace/api-zod';
 import { eq } from 'drizzle-orm';
 
 const router: IRouter = Router();
 
-function userIdFromRequest(req: { auth?: () => { userId?: string | null } }) {
+type ClerkRequest = Request & { auth?: () => { userId?: string | null } };
+
+function userIdFromRequest(req: ClerkRequest) {
   return req.auth?.().userId || null;
 }
 
@@ -15,7 +17,7 @@ async function database() {
 }
 
 router.get('/learning', async (req, res) => {
-  const userId = userIdFromRequest(req);
+  const userId = userIdFromRequest(req as ClerkRequest);
   if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }
   const loaded = await database();
   if (!loaded) { res.status(503).json({ error: 'Learning persistence is not configured.' }); return; }
@@ -25,7 +27,7 @@ router.get('/learning', async (req, res) => {
 });
 
 router.post('/experiments', async (req, res) => {
-  const userId = userIdFromRequest(req);
+  const userId = userIdFromRequest(req as ClerkRequest);
   if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }
   const parsed = experimentSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid experiment.', issues: parsed.error.flatten() }); return; }
@@ -36,7 +38,7 @@ router.post('/experiments', async (req, res) => {
 });
 
 router.post('/quiz-attempts', async (req, res) => {
-  const userId = userIdFromRequest(req);
+  const userId = userIdFromRequest(req as ClerkRequest);
   if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }
   const parsed = quizAttemptSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid quiz attempt.', issues: parsed.error.flatten() }); return; }
