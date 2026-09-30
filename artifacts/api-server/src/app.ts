@@ -64,7 +64,7 @@ app.use((error: unknown, req: IncomingMessage, res: ServerResponse, _next: unkno
   const message = error instanceof Error ? error.message : "Unexpected API error.";
   logger.error({ err: error, method: req.method, url: req.url?.split("?")[0] }, "API request failed");
   const isConfigurationError = message.includes("Missing Clerk Secret Key") || message.includes("Missing Clerk Publishable Key");
-  res.status(isConfigurationError ? 503 : 500);
+  res.statusCode = isConfigurationError ? 503 : 500;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ error: message }));
 });
